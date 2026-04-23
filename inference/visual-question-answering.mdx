@@ -1,0 +1,104 @@
+---
+title: "Visual question answering with Alpamayo 1.5"
+description: "Use Alpamayo 1.5's generate_text method to answer natural language questions about autonomous driving scenes captured from vehicle cameras."
+---
+
+Beyond trajectory prediction, Alpamayo 1.5 supports visual question answering (VQA) on driving scenes. The `generate_text` method processes multi-camera video frames and a natural language question, returning a structured text response containing the model's reasoning and final answer. This enables applications such as scene understanding, hazard explanation, and post-hoc analysis of driving events.
+
+## How VQA differs from trajectory prediction
+
+| Aspect | Trajectory prediction | VQA |
+|---|---|---|
+| Output | `pred_xyz`, `pred_rot` tensors + text | Text dict only |
+| Diffusion expert | Used | Not used |
+| Action space | Continuous waypoints | None |
+| Primary return keys | `"cot"`, `"meta_action"` + tensors | `"cot"`, `"meta_action"`, `"answer"` |
+
+VQA is pure VLM autoregressive generation — no diffusion expert or action space is involved. The model reads the camera frames and question, then generates a chain-of-causation reasoning trace followed by a concise answer.
+
+## Example
+
+Use `helper.create_vqa_message` to build the prompt, then call `model.generate_text`:
+
+```python visual_question_answering.py
+import torch
+from alpamayo1_5 import helper
+from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
+
+data = load_physical_aiavdataset("030c760c-ae38-49aa-9ad8-f5650a545d26", t0_us=5_100_000)
+
+model = Alpamayo1_5.from_pretrained("nvidia/Alpamayo-1.5-10B", dtype=torch.bfloat16).to("cuda")
+processor = helper.get_processor(model.tokenizer)
+
+# Ask a question about the driving scene
+question = "What is the most critical hazard visible in the current scene?"
+messages = helper.create_vqa_message(
+    frames=data["image_frames"].flatten(0, 1),
+    question=question,
+    camera_indices=data["camera_indices"],
+)
+inputs = processor.apply_chat_template(
+    messages,
+    tokenize=True,
+    add_generation_prompt=False,
+    continue_final_message=True,
+    return_dict=True,
+    return_tensors="pt",
+)
+model_inputs = {
+    "tokenized_data": inputs,
+}
+model_inputs = helper.to_device(model_inputs, "cuda")
+
+with torch.autocast("cuda", dtype=torch.bfloat16):
+    text_outputs = model.generate_text(
+        data=model_inputs,
+        top_p=0.98,
+        temperature=0.6,
+        num_samples=1,
+        max_generation_length=256,
+    )
+
+print("Answer:", text_outputs["answer"][0, 0])
+```
+
+## Parameters
+
+<ParamField body="data" type="dict" required>
+  Input data dict containing `tokenized_data`. Unlike trajectory methods, this dict does not require `ego_history_xyz` or `ego_history_rot`. Build using `helper.create_vqa_message` and `processor.apply_chat_template`.
+</ParamField>
+
+<ParamField body="top_p" type="float" default="0.98">
+  Nucleus sampling parameter. Tokens are sampled from the smallest set whose cumulative probability exceeds `top_p`.
+</ParamField>
+
+<ParamField body="top_k" type="int">
+  Top-k sampling parameter. When set, restricts sampling to the `top_k` most probable tokens.
+</ParamField>
+
+<ParamField body="temperature" type="float" default="0.6">
+  Sampling temperature. Lower values produce more deterministic answers; higher values increase response diversity.
+</ParamField>
+
+<ParamField body="num_samples" type="int" default="1">
+  Number of independent response samples to generate per input. Useful for majority-vote aggregation or uncertainty estimation.
+</ParamField>
+
+<ParamField body="max_generation_length" type="int" default="256">
+  Maximum number of new tokens to generate. Increase for longer reasoning chains or complex scene descriptions.
+</ParamField>
+
+## Return value
+
+`generate_text` returns a `dict[str, np.ndarray]`. Each value has shape `(B, num_samples)`.
+
+| Key | Description |
+|---|---|
+| `"cot"` | Chain-of-causation reasoning text produced before the answer |
+| `"meta_action"` | High-level action label inferred by the model |
+| `"answer"` | Final answer to the question |
+
+<Note>
+  For detailed VQA examples, including multi-question batching and scene description prompts, refer to `notebooks/inference_vqa.ipynb` in the repository.
+</Note>

@@ -1,97 +1,73 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Alpamayo 1.5: Autonomous Driving with Steerable Reasoning"
+description: "NVIDIA's Vision-Language-Action model combining chain-of-causation reasoning with diffusion-based trajectory prediction for generalizable autonomous driving."
 ---
 
-## Setting up
+Alpamayo 1.5 is a 10-billion-parameter Vision-Language-Action (VLA) model from NVIDIA that supercharges autonomous driving research with interactive, steerable reasoning. It combines a Qwen3-VL visual language backbone with a diffusion-based action expert to generate interpretable chain-of-causation reasoning traces alongside precise 6.4-second trajectory predictions — all conditioned on multi-camera video inputs.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Set up your environment and run your first inference in minutes
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Hardware Requirements" icon="microchip" href="/hardware-requirements">
+    Check GPU VRAM requirements before getting started
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Inference Overview" icon="brain" href="/inference/overview">
+    Understand the two inference methods and when to use each
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/reference/api">
+    Full API documentation for all public methods and parameters
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What Alpamayo 1.5 can do
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Trajectory Prediction" icon="route" href="/inference/trajectory-prediction">
+    Predict 64 future waypoints at 10 Hz over a 6.4s horizon using diffusion sampling
+  </Card>
+  <Card title="Navigation Guidance" icon="map" href="/inference/navigation-guidance">
+    Condition trajectories on turn-by-turn navigation instructions with CFG
+  </Card>
+  <Card title="Visual Question Answering" icon="message-question" href="/inference/visual-question-answering">
+    Answer natural language questions about driving scenes from camera inputs
+  </Card>
+  <Card title="Multi-Camera Inference" icon="camera" href="/inference/multi-camera">
+    Run inference with variable numbers of cameras — from 1 to 7
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Getting started
 
-## Need inspiration?
+<Steps>
+  <Step title="Install the environment">
+    Set up a Python 3.12 virtual environment with `uv` and install all dependencies including Flash Attention.
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    ```bash
+    uv venv a1_5_venv
+    source a1_5_venv/bin/activate
+    uv sync --active
+    ```
+  </Step>
+  <Step title="Authenticate with HuggingFace">
+    Request access to the gated model and dataset, then authenticate with your HuggingFace token.
+
+    ```bash
+    hf auth login
+    ```
+  </Step>
+  <Step title="Run the test script">
+    Download example data and model weights, then run inference to verify your setup.
+
+    ```bash
+    python src/alpamayo1_5/test_inference.py
+    ```
+  </Step>
+  <Step title="Explore the notebooks">
+    Dive deeper with the provided Jupyter notebooks covering navigation guidance, VQA, and multi-camera inference under `notebooks/`.
+  </Step>
+</Steps>
+
+<Note>
+  Alpamayo 1.5 requires at minimum **24 GB VRAM** for single-sample inference. The model weights are ~22 GB and are downloaded automatically on first run. This model is for **research use only** — not for commercial applications.
+</Note>

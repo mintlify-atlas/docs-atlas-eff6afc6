@@ -1,0 +1,107 @@
+---
+title: "Running inference with multiple cameras"
+description: "Alpamayo 1.5 supports 1 to 7 cameras at inference time. Learn how to configure camera inputs and understand how camera count affects model accuracy."
+---
+
+Alpamayo 1.5 is trained to handle a variable number of input cameras, from a single front-facing camera to all seven available cameras. This flexibility enables deployment in scenarios where only a subset of cameras are available, though accuracy degrades with fewer cameras — particularly for maneuvers that depend on peripheral scene awareness.
+
+## Supported cameras
+
+| Index | Camera name |
+|---|---|
+| 0 | Front left camera |
+| 1 | Front camera |
+| 2 | Front right camera |
+| 3 | Rear left camera |
+| 4 | Rear camera |
+| 5 | Rear right camera |
+| 6 | Front telephoto camera |
+
+Camera display names are defined in `helper.CAMERA_DISPLAY_NAMES` and used by the prompt builder to label each image group in the VLM input.
+
+## Default camera configuration
+
+`load_physical_aiavdataset` defaults to four cameras: front left (0), front (1), front right (2), and front telephoto (6). This configuration covers forward and lateral vision without the additional VRAM cost of rear cameras.
+
+## Selecting cameras at load time
+
+Pass a `camera_features` list to `load_physical_aiavdataset` to control which cameras are loaded. The `camera_indices` tensor returned by the loader is passed directly to `helper.create_message`, which uses it to assign correct positional embeddings and camera labels in the prompt.
+
+```python multi_camera_inference.py
+import torch
+from alpamayo1_5 import helper
+from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
+import physical_ai_av
+
+# Initialize dataset interface
+avdi = physical_ai_av.PhysicalAIAVDatasetInterface()
+
+# Select specific cameras — front-only configuration
+camera_features = [
+    avdi.features.CAMERA.CAMERA_FRONT_WIDE_120FOV,  # index 1
+]
+data = load_physical_aiavdataset(
+    clip_id="030c760c-ae38-49aa-9ad8-f5650a545d26",
+    t0_us=5_100_000,
+    avdi=avdi,
+    camera_features=camera_features,
+)
+
+model = Alpamayo1_5.from_pretrained("nvidia/Alpamayo-1.5-10B", dtype=torch.bfloat16).to("cuda")
+processor = helper.get_processor(model.tokenizer)
+
+messages = helper.create_message(
+    frames=data["image_frames"].flatten(0, 1),
+    camera_indices=data["camera_indices"],  # Positional context for the model
+)
+inputs = processor.apply_chat_template(
+    messages,
+    tokenize=True,
+    add_generation_prompt=False,
+    continue_final_message=True,
+    return_dict=True,
+    return_tensors="pt",
+)
+model_inputs = {
+    "tokenized_data": inputs,
+    "ego_history_xyz": data["ego_history_xyz"],
+    "ego_history_rot": data["ego_history_rot"],
+}
+model_inputs = helper.to_device(model_inputs, "cuda")
+```
+
+<Warning>
+  Model accuracy may degrade with fewer cameras. For example, Alpamayo 1.5 will struggle to detect cross-traffic in a right turn when only a front-facing camera is provided.
+</Warning>
+
+## How camera indices affect inference
+
+The `camera_indices` tensor communicates which physical cameras each image frame corresponds to. The model uses this information in two ways:
+
+- **Positional embeddings** — each camera has a distinct spatial position relative to the vehicle, and the model applies camera-specific embeddings to each image group.
+- **Prompt labeling** — `helper.create_message` uses `CAMERA_DISPLAY_NAMES` to build labeled prompt sections such as `"Front camera: frame 0 [image] frame 1 [image] ..."`, helping the VLM associate each image with its physical location on the vehicle.
+
+Omitting `camera_indices` or passing incorrect indices will cause the model to apply wrong positional embeddings and misattribute spatial context.
+
+## Camera configuration trade-offs
+
+| Configuration | Cameras | Strengths | Limitations |
+|---|---|---|---|
+| Front-only | 1 | Lowest VRAM | No lateral or rear awareness |
+| Front + side | 3 (0, 1, 2) | Forward + cross-traffic | No rear or telephoto |
+| Default (4 cameras) | 0, 1, 2, 6 | Balanced; includes telephoto | No rear coverage |
+| Full surround | 7 (all) | Maximum scene coverage | Highest VRAM usage |
+
+<Tip>
+  For detailed multi-camera examples and accuracy comparisons across camera counts, see `notebooks/inference_cam_num.ipynb` in the repository.
+</Tip>
+
+<CardGroup cols={2}>
+  <Card title="Inference overview" href="/inference/overview" icon="brain">
+    Understand the two inference paths and the common input preparation pattern.
+  </Card>
+  <Card title="Hardware requirements" href="/hardware-requirements" icon="microchip">
+    VRAM requirements for different camera counts and trajectory sample sizes.
+  </Card>
+</CardGroup>

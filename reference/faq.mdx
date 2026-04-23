@@ -1,0 +1,53 @@
+---
+title: "Alpamayo 1.5 frequently asked questions"
+description: "Answers to common questions about Alpamayo 1.5: licensing, hardware, capabilities, RL training, navigation support, and relationship to Alpamayo 1."
+---
+
+Answers to the most frequently asked questions about Alpamayo 1.5.
+
+<AccordionGroup>
+  <Accordion title="How does Alpamayo 1.5 relate to Alpamayo 1?">
+    Alpamayo 1.5 expands upon the architecture from Alpamayo 1 and fully realizes the design described in the paper ["Alpamayo-R1: Bridging Reasoning and Action Prediction for Generalizable Autonomous Driving in the Long Tail"](https://arxiv.org/abs/2511.00088). Key additions in 1.5:
+
+    | Feature | Alpamayo 1 | Alpamayo 1.5 |
+    |---|---|---|
+    | RL post-training | ❌ | ✅ |
+    | Navigation conditioning | ❌ | ✅ |
+    | Visual Question Answering | ❌ | ✅ |
+    | Flexible multi-camera support | ❌ | ✅ |
+    | Chain-of-Causation reasoning | ✅ | ✅ |
+    | Trajectory prediction (6.4s) | ✅ | ✅ |
+  </Accordion>
+
+  <Accordion title="Can I use Alpamayo 1.5 in production or commercial applications?">
+    No. The model weights are released under a **non-commercial license**. Alpamayo 1.5 is intended for research, experimentation, and evaluation only. See the [HuggingFace Model Card](https://huggingface.co/nvidia/Alpamayo-1.5-10B) for the full license terms.
+  </Accordion>
+
+  <Accordion title="What are the minimum GPU requirements?">
+    You need an NVIDIA GPU with at least **24 GB VRAM** for single-sample inference (`num_traj_samples=1`). Tested GPUs include RTX 3090, A100, H100, and B200. GPUs with less than 24 GB will likely produce CUDA out-of-memory errors. See [Hardware Requirements](/hardware-requirements) for the full VRAM table.
+  </Accordion>
+
+  <Accordion title="Was Alpamayo 1.5 post-trained with Reinforcement Learning?">
+    Yes. Alpamayo 1.5 has undergone RL post-training, which improves reasoning quality and the alignment between chain-of-causation reasoning traces and the predicted trajectories. Alpamayo 1 was not RL post-trained.
+  </Accordion>
+
+  <Accordion title="Does Alpamayo 1.5 accept navigation inputs?">
+    Yes. Pass a natural language navigation instruction to `helper.create_message(nav_text=...)`. For navigation-conditioned trajectory prediction with classifier-free guidance, use `sample_trajectories_from_data_with_vlm_rollout_cfg_nav`. See [Navigation Guidance](/inference/navigation-guidance) for examples.
+  </Accordion>
+
+  <Accordion title="Does Alpamayo 1.5 support general VQA?">
+    Yes. Use `helper.create_vqa_message(frames, question)` to build a VQA prompt, then call `model.generate_text()`. See [Visual Question Answering](/inference/visual-question-answering) and `notebooks/inference_vqa.ipynb` for examples.
+  </Accordion>
+
+  <Accordion title="Does Alpamayo 1.5 support different numbers of cameras?">
+    Yes. The model supports 1 to 7 cameras at inference. Pass `camera_features` to `load_physical_aiavdataset` to select specific cameras. Note that accuracy may degrade with fewer cameras — for example, the model may miss cross-traffic in a right turn if only a front-facing camera is provided. See [Multi-Camera Inference](/inference/multi-camera) for details.
+  </Accordion>
+
+  <Accordion title="Can I train or fine-tune Alpamayo 1.5?">
+    The code release focuses on inference. Training scripts are not included in this release. The repository is licensed under Apache 2.0 for the code; the model weights have a separate non-commercial license.
+  </Accordion>
+
+  <Accordion title="What is Chain-of-Causation reasoning?">
+    Chain-of-Causation (CoC) is Alpamayo's interpretable reasoning format. Before predicting trajectories, the model generates a text explanation of the driving scene: what hazards are present, what the vehicle's intent is, and why certain actions are taken. This reasoning is produced autoregressively by the VLM backbone and returned in the `extra["cot"]` field when `return_extra=True`.
+  </Accordion>
+</AccordionGroup>

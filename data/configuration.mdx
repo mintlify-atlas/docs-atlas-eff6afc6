@@ -1,0 +1,78 @@
+---
+title: "Configuring Alpamayo1_5Config"
+description: "Alpamayo1_5Config controls the diffusion expert, action space, VLM backbone, and attention settings. Load from HuggingFace or customize for research use."
+---
+
+`Alpamayo1_5Config` is the configuration class for Alpamayo 1.5. It extends `ReasoningVLAConfig` (which handles VLM backbone settings) with parameters for the diffusion expert, action space, and projection layers. When loading from HuggingFace via `from_pretrained`, the config is loaded automatically.
+
+## Loading the model
+
+```python
+import torch
+from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
+
+# Standard load — config is applied automatically
+model = Alpamayo1_5.from_pretrained(
+    "nvidia/Alpamayo-1.5-10B",
+    dtype=torch.bfloat16,
+).to("cuda")
+
+# Use SDPA instead of Flash Attention (no nvcc required)
+model = Alpamayo1_5.from_pretrained(
+    "nvidia/Alpamayo-1.5-10B",
+    dtype=torch.bfloat16,
+    attn_implementation="sdpa",
+).to("cuda")
+```
+
+## VLM backbone settings (ReasoningVLAConfig)
+
+<ParamField path="vlm_name_or_path" type="str" default="Qwen/Qwen3-VL-8B-Instruct">
+  HuggingFace model name or local path for the Qwen3-VL backbone.
+</ParamField>
+
+<ParamField path="traj_vocab_size" type="int" default="768">
+  Number of discrete trajectory tokens added to the vocabulary (`<i0>` through `<i767>`).
+</ParamField>
+
+<ParamField path="tokens_per_history_traj" type="int" default="16">
+  Number of discrete tokens used to represent the ego history trajectory.
+</ParamField>
+
+<ParamField path="tokens_per_future_traj" type="int" default="64">
+  Maximum generation length for future trajectory tokens.
+</ParamField>
+
+<ParamField path="model_dtype" type="str" default="bfloat16">
+  Floating point dtype for model weights. `bfloat16` is recommended for H100/A100.
+</ParamField>
+
+<ParamField path="attn_implementation" type="str" default="flash_attention_2">
+  Attention backend. Options: `"flash_attention_2"` (requires nvcc) or `"sdpa"` (PyTorch built-in fallback).
+</ParamField>
+
+<ParamField path="min_pixels" type="int | None" default="None">
+  Minimum pixel count for image preprocessing. When None, uses processor defaults.
+</ParamField>
+
+<ParamField path="max_pixels" type="int | None" default="None">
+  Maximum pixel count for image preprocessing. When None, uses processor defaults.
+</ParamField>
+
+## Diffusion expert settings (Alpamayo1_5Config)
+
+<ParamField path="expert_non_causal_attention" type="bool" default="True">
+  When True, the diffusion expert uses bidirectional (non-causal) attention over the diffusion tokens, allowing each token to attend to all other diffusion tokens.
+</ParamField>
+
+<ParamField path="keep_same_dtype" type="bool" default="True">
+  When True, the diffusion module and projection layers are cast to the same dtype as the expert transformer.
+</ParamField>
+
+<ParamField path="include_camera_ids" type="bool" default="False">
+  Whether to include camera index embeddings in the model input.
+</ParamField>
+
+<ParamField path="include_frame_nums" type="bool" default="False">
+  Whether to include frame number embeddings in the model input.
+</ParamField>

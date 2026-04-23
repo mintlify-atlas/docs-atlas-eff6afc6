@@ -1,0 +1,45 @@
+---
+title: "Diffusion expert and flow matching in Alpamayo"
+description: "Alpamayo 1.5 uses a flow matching expert conditioned on VLM hidden states to denoise trajectory actions into precise 6.4-second, 64-waypoint predictions."
+---
+
+The diffusion expert in Alpamayo 1.5 is a smaller transformer that performs trajectory denoising conditioned on the VLM's frozen KV cache. It uses flow matching — a continuous normalizing flow method — to iteratively refine random noise into precise trajectory predictions.
+
+## Denoising step function
+
+Each denoising iteration runs the following steps:
+
+<Steps>
+  <Step title="Project noisy action to embeddings">
+    `action_in_proj` maps the noisy action tensor `x` and timestep `t` to expert token embeddings of shape `(batch, n_diffusion_tokens, hidden_size)`.
+  </Step>
+  <Step title="Expert transformer forward pass">
+    The expert transformer forward-passes these embeddings with cross-attention to the frozen VLM KV cache. It uses bidirectional (non-causal) attention over the diffusion tokens (`expert_non_causal_attention=True`).
+  </Step>
+  <Step title="Project back to action space">
+    `action_out_proj` maps the expert's last hidden states back to the action space dimension, producing the predicted noise/vector field.
+  </Step>
+</Steps>
+
+## Flow matching
+
+Flow matching defines a probability path from Gaussian noise to the data distribution and trains the model to predict the vector field that moves samples along this path. Compared to DDPM-style diffusion, flow matching allows cleaner probability paths and requires fewer sampling steps.
+
+## Multiple trajectory samples
+
+Setting `num_traj_samples > 1` runs multiple independent diffusion chains in parallel. All share the same VLM KV cache (repeated via `batch_repeat_interleave`). This enables best-of-N selection using metrics like minADE.
+
+## Classifier-free guidance for navigation
+
+When using `sample_trajectories_from_data_with_vlm_rollout_cfg_nav`, two KV caches are maintained:
+
+| Cache | Contents |
+|---|---|
+| Guided cache | VLM prefill with navigation tokens (`<\|route_start\|>...<\|route_end\|>`) |
+| Unguided cache | VLM prefill with navigation tokens stripped |
+
+The diffusion sampler calls both `step_fn` (guided) and `unguided_step_fn` at each denoising step, amplifying the navigation signal in the predicted trajectories.
+
+<Warning>
+CFG navigation inference requires approximately **60 GB VRAM** for 16 trajectory samples, compared to ~40 GB for standard multi-sample inference.
+</Warning>

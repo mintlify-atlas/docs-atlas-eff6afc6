@@ -1,0 +1,51 @@
+---
+title: "Vision-Language Model backbone in Alpamayo"
+description: "Alpamayo 1.5 uses Qwen3-VL as its VLM backbone to process multi-camera images, ego history trajectory tokens, and optional navigation instructions."
+---
+
+The VLM backbone in Alpamayo 1.5 is based on Qwen3-VL (specifically `Qwen/Qwen3-VL-8B-Instruct`), which processes multi-camera image sequences alongside structured trajectory history tokens and optional navigation instructions. It generates chain-of-causation reasoning text before passing its KV cache to the diffusion expert.
+
+## Input modalities
+
+The VLM receives three types of input fused into a single prompt:
+
+- **Camera images**: Up to 7 cameras, 4 frames each, preprocessed to pixel bounds MIN=163,840 / MAX=196,608
+- **Ego history trajectory**: 16 discrete tokens representing the past 1.6s of vehicle motion, embedded between `<|traj_history_start|>` and `<|traj_history_end|>`
+- **Navigation text** (optional): A natural language instruction embedded between `<|route_start|>` and `<|route_end|>`
+
+## Prompt structure
+
+```python
+# Constructed by helper.create_message()
+[
+    {
+        "role": "system",
+        "content": [{"type": "text", "text": "You are a driving assistant that generates safe and accurate actions."}]
+    },
+    {
+        "role": "user",
+        "content": [
+            # Camera labels + images: "Front camera: frame 0 [img] frame 1 [img]..."
+            {"type": "text", "text": "<|traj_history_start|><|traj_history|>...<|traj_history_end|>"},
+            # Optional: {"type": "text", "text": "<|route_start|>Turn left in 40m<|route_end|>"}
+            {"type": "text", "text": "output the chain-of-thought reasoning of the driving process, then output the future trajectory."},
+        ]
+    },
+    {
+        "role": "assistant",
+        "content": [{"type": "text", "text": "<|cot_start|>"}]  # generation continues from here
+    }
+]
+```
+
+## Extended vocabulary
+
+The base Qwen3 vocabulary is extended with 768 discrete trajectory tokens (`<i0>` through `<i767>`) for encoding ego history, plus special structural tokens for trajectory boundaries, reasoning sections, and QA.
+
+<Note>
+A custom `ExpertLogitsProcessor` masks these discrete trajectory tokens during VLM text generation, preventing the VLM from generating raw trajectory codes in the reasoning text and improving CoC quality.
+</Note>
+
+## Trajectory history fusion
+
+History trajectory coordinates are encoded into discrete token IDs via a delta tokenizer, then fused into the prompt via `fuse_traj_tokens()`, which replaces placeholder `<|traj_history|>` tokens in the input with the actual encoded values.

@@ -1,0 +1,69 @@
+---
+title: "Contributing to Alpamayo 1.5"
+description: "Guidelines for contributing code to Alpamayo 1.5: issue tracking, coding standards, commit signing, and the pull request workflow."
+---
+
+Contributions to Alpamayo 1.5 are welcome. All changes must follow the workflow described below, starting with a GitHub Issue before any code is submitted.
+
+## Before you start
+
+All enhancement, bugfix, or change requests must begin with a [GitHub Issue](https://github.com/NVlabs/alpamayo1.5/issues). The issue must be reviewed and approved by an Alpamayo researcher before any code review begins.
+
+## Contribution workflow
+
+<Steps>
+  <Step title="Open a GitHub Issue">
+    File an [issue](https://github.com/NVlabs/alpamayo1.5/issues) describing the enhancement, bug, or change. Wait for approval from an Alpamayo researcher before writing code.
+  </Step>
+  <Step title="Fork and clone the repository">
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/alpamayo1.5.git
+    git checkout -b my-feature-branch
+    ```
+  </Step>
+  <Step title="Make your changes">
+    Follow the coding guidelines below. Run `pre-commit format` on modified files to apply the project's formatting rules.
+  </Step>
+  <Step title="Sign your commits">
+    All commits must be signed off with `--signoff`:
+    ```bash
+    git commit -s -m "#<Issue Number> - Add cool feature."
+    ```
+  </Step>
+  <Step title="Open a Pull Request">
+    Push your branch and open a PR targeting the upstream repository. Reference the issue number in the PR title. Mark PRs as `[WIP]` while under review.
+  </Step>
+</Steps>
+
+## Coding guidelines
+
+- Follow existing code conventions in the relevant file and module
+- Run `pre-commit format` to apply formatting rules (naming, indentation, line length, comment style)
+- Keep PRs focused — one concern per PR where possible; avoid mixing unrelated changes
+- No commented-out code in commits
+- All new components must include a test
+- All OSS components must include documentation (README or equivalent)
+
+## Commit message format
+
+```
+#<Issue Number> - <Commit Title>
+
+<Commit Body>
+```
+
+Use imperative mood in the title (e.g., "Add navigation CFG support", not "Added" or "Adding").
+
+## Sign-off requirement
+
+Every commit must contain a `Signed-off-by` line certifying that the contribution is your original work or properly licensed. This is required for the contribution to be accepted.
+
+```
+Signed-off-by: Your Name <your@email.com>
+```
+
+Add this automatically with `git commit -s`.
+
+<Note>
+There is currently no automated CI/CD process. PRs are validated manually by an Alpamayo researcher before merging.
+</Note>

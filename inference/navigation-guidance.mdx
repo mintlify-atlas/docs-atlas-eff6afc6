@@ -1,0 +1,132 @@
+---
+title: "Navigation-guided trajectory prediction with CFG"
+description: "Condition Alpamayo 1.5 trajectory predictions on navigation instructions using classifier-free guidance for steerable, direction-aware driving behavior."
+---
+
+Alpamayo 1.5 supports explicit navigation conditioning via classifier-free guidance (CFG). By providing a natural language navigation instruction — such as "Turn left onto Main Street in 40m" — the model steers trajectory predictions toward the requested maneuver while maintaining safe driving behavior. This is useful when you have a route planner or map system that can emit turn-by-turn instructions, and you want the motion prediction model to respect them.
+
+## How CFG navigation works
+
+<Steps>
+  <Step title="Navigation text encoding">
+    The `nav_text` string is wrapped in special tokens (`<|route_start|>...<|route_end|>`) and embedded into the prompt via `helper.create_message`. The VLM receives this as additional context before generating its chain-of-causation reasoning.
+  </Step>
+  <Step title="Dual forward pass">
+    CFG computes two forward passes through the model: one conditioned on the navigation instruction (guided) and one without it (unguided). Both produce hidden states used by the diffusion expert.
+  </Step>
+  <Step title="Guided diffusion sampling">
+    During diffusion sampling, the step interpolates between guided and unguided predictions to amplify the navigation signal, resulting in trajectories biased toward the requested maneuver.
+  </Step>
+</Steps>
+
+<Warning>
+  CFG navigation requires approximately 60 GB VRAM for 16 trajectory samples, compared to approximately 40 GB for the standard method. See [Hardware Requirements](/hardware-requirements) for details.
+</Warning>
+
+## Example: navigation-conditioned inference
+
+```python navigation_guidance.py
+import torch
+from alpamayo1_5 import helper
+from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
+
+data = load_physical_aiavdataset("030c760c-ae38-49aa-9ad8-f5650a545d26", t0_us=5_100_000)
+
+model = Alpamayo1_5.from_pretrained("nvidia/Alpamayo-1.5-10B", dtype=torch.bfloat16).to("cuda")
+processor = helper.get_processor(model.tokenizer)
+
+# Provide a navigation instruction
+nav_text = "Turn left onto De La Cruz Boulevard in 40m"
+messages = helper.create_message(
+    frames=data["image_frames"].flatten(0, 1),
+    camera_indices=data["camera_indices"],
+    nav_text=nav_text,
+)
+inputs = processor.apply_chat_template(
+    messages,
+    tokenize=True,
+    add_generation_prompt=False,
+    continue_final_message=True,
+    return_dict=True,
+    return_tensors="pt",
+)
+model_inputs = {
+    "tokenized_data": inputs,
+    "ego_history_xyz": data["ego_history_xyz"],
+    "ego_history_rot": data["ego_history_rot"],
+}
+model_inputs = helper.to_device(model_inputs, "cuda")
+
+with torch.autocast("cuda", dtype=torch.bfloat16):
+    pred_xyz, pred_rot = model.sample_trajectories_from_data_with_vlm_rollout_cfg_nav(
+        data=model_inputs,
+        top_p=0.98,
+        temperature=0.6,
+        num_traj_samples=16,
+    )
+```
+
+## No-nav baseline with nav prompt format
+
+When running ablation experiments, you may want to use the navigation-style prompt format without providing an actual instruction. Pass `use_nav_prompt=True` without a `nav_text` argument:
+
+```python nav_prompt_no_instruction.py
+messages = helper.create_message(
+    frames=data["image_frames"].flatten(0, 1),
+    camera_indices=data["camera_indices"],
+    use_nav_prompt=True,  # nav prompt format, but no instruction
+)
+```
+
+This ensures the prompt structure is consistent between the guided and unguided conditions, which matters when comparing results across configurations.
+
+## Navigation text format
+
+Write navigation instructions as natural language turn-by-turn directions. Follow these conventions for best results:
+
+- Include the maneuver type: "Turn left", "Turn right", "Continue straight", "Take the on-ramp"
+- Include a distance qualifier: "in 40m", "in 200m", "in 500m"
+- Optionally include the street or landmark name
+
+| Example instruction | Notes |
+|---|---|
+| `"Turn left onto De La Cruz Boulevard in 40m"` | Preferred format with street name and distance |
+| `"Continue straight for 500m"` | No street name required for lane-keeping |
+| `"Take the highway on-ramp on the right"` | Directional cue without distance |
+| `"Turn right onto Main Street in 40m"` | Standard right-turn instruction |
+
+<Tip>
+  Refer to `notebooks/inference_nav.ipynb` for detailed examples of navigation-guided inference, including side-by-side trajectory comparisons between guided and unguided outputs.
+</Tip>
+
+## Comparing navigation conditions
+
+The `nav_utils.compare_nav_conditions` helper runs inference under three conditions — with nav, without nav, and with the counterfactual (direction-swapped) instruction — in a single call:
+
+```python
+from alpamayo1_5 import nav_utils, viz_utils
+
+result = nav_utils.compare_nav_conditions(
+    model=model,
+    processor=processor,
+    data=data,
+    nav_text="Turn left onto De La Cruz Boulevard in 40m",
+    num_traj_samples=16,
+)
+
+# Visualize all three conditions as a BEV comparison plot
+camera_grid = viz_utils.make_camera_grid(data["image_frames"], data["camera_indices"])
+fig = viz_utils.plot_bev_comparison(
+    pred_with_nav=result.pred_with_nav,
+    pred_no_nav=result.pred_no_nav,
+    pred_counterfactual=result.pred_counterfactual,
+    nav_text=result.nav_text,
+    nav_text_swapped=result.nav_text_swapped,
+    gt_future_xyz=data["ego_future_xyz"],
+    camera_images=camera_grid,
+)
+fig.savefig("nav_comparison.png", dpi=150)
+```
+
+See the [API Reference](/reference/api) for full documentation of `nav_utils` and `viz_utils`.

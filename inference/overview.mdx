@@ -1,0 +1,80 @@
+---
+title: "Alpamayo 1.5 inference methods explained"
+description: "Alpamayo 1.5 offers two inference paths: trajectory prediction with VLM reasoning and text-only VQA generation. Learn when to use each method."
+---
+
+Alpamayo 1.5 provides two distinct inference methods depending on your use case. The primary method combines VLM autoregressive generation with diffusion-based trajectory prediction; the secondary method handles visual question answering as text-only generation.
+
+## Inference methods
+
+| Method | Output | Use case |
+|---|---|---|
+| `sample_trajectories_from_data_with_vlm_rollout` | Trajectories + CoC reasoning | Driving trajectory prediction |
+| `sample_trajectories_from_data_with_vlm_rollout_cfg_nav` | Trajectories + CoC reasoning (nav-conditioned) | Navigation-guided prediction |
+| `generate_text` | Text dict (`cot`, `meta_action`, `answer`) | Visual question answering |
+
+## Two-stage trajectory prediction pipeline
+
+When you call `sample_trajectories_from_data_with_vlm_rollout`, both stages execute in a single forward pass:
+
+<Steps>
+  <Step title="VLM autoregressive generation">
+    The vision-language model processes multi-camera frames and generates chain-of-causation (CoC) reasoning text describing the driving scene, detected agents, and intended maneuver.
+  </Step>
+  <Step title="Diffusion-based trajectory prediction">
+    The diffusion expert receives the VLM's hidden states and uses them as conditioning to produce a set of future trajectory waypoints (`pred_xyz`, `pred_rot`). The VLM's reasoning directly shapes the predicted motion.
+  </Step>
+</Steps>
+
+## Common inference pattern
+
+The following code loads a model, prepares a data sample, and builds the input dict expected by both trajectory and VQA methods.
+
+```python inference_setup.py
+import torch
+from alpamayo1_5 import helper
+from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
+
+# Load model
+model = Alpamayo1_5.from_pretrained("nvidia/Alpamayo-1.5-10B", dtype=torch.bfloat16).to("cuda")
+processor = helper.get_processor(model.tokenizer)
+
+# Load data
+data = load_physical_aiavdataset(clip_id="030c760c-ae38-49aa-9ad8-f5650a545d26", t0_us=5_100_000)
+
+# Prepare message and inputs
+messages = helper.create_message(
+    frames=data["image_frames"].flatten(0, 1),
+    camera_indices=data["camera_indices"],
+)
+inputs = processor.apply_chat_template(
+    messages,
+    tokenize=True,
+    add_generation_prompt=False,
+    continue_final_message=True,
+    return_dict=True,
+    return_tensors="pt",
+)
+model_inputs = {
+    "tokenized_data": inputs,
+    "ego_history_xyz": data["ego_history_xyz"],
+    "ego_history_rot": data["ego_history_rot"],
+}
+model_inputs = helper.to_device(model_inputs, "cuda")
+```
+
+<CardGroup cols={2}>
+  <Card title="Trajectory prediction" href="/inference/trajectory-prediction" icon="route">
+    Generate 64-step future waypoints alongside chain-of-causation reasoning text.
+  </Card>
+  <Card title="Navigation guidance" href="/inference/navigation-guidance" icon="map">
+    Condition trajectory predictions on natural language navigation instructions using CFG.
+  </Card>
+  <Card title="Visual question answering" href="/inference/visual-question-answering" icon="message-question">
+    Answer natural language questions about driving scenes with text-only generation.
+  </Card>
+  <Card title="Multi-camera inference" href="/inference/multi-camera" icon="camera">
+    Configure which cameras the model receives and understand their effect on accuracy.
+  </Card>
+</CardGroup>

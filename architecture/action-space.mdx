@@ -1,0 +1,43 @@
+---
+title: "Trajectory action space and unicycle model"
+description: "Alpamayo 1.5 uses a unicycle acceleration-curvature action space so the diffusion expert can predict physically plausible 6.4-second XYZ trajectories."
+---
+
+Alpamayo 1.5 represents predicted vehicle trajectories in a physics-based action space rather than raw XYZ coordinates. The unicycle acceleration-curvature model provides a compact parameterization that respects vehicle kinematics and simplifies the learning problem for the diffusion expert.
+
+## Unicycle model
+
+The unicycle model parameterizes vehicle motion using two quantities:
+
+- **Acceleration** — longitudinal control; determines speed changes over time
+- **Curvature** — lateral control; determines turning radius
+
+Forward integration of these two controls over the 6.4-second prediction horizon (64 timesteps at 10 Hz) produces the full xyz/rotation trajectory. This formulation is grounded in vehicle dynamics and produces physically plausible paths.
+
+## Converting actions to trajectories
+
+After diffusion sampling, `action_to_traj` decodes raw actions to waypoints:
+
+```python
+pred_xyz, pred_rot = action_space.action_to_traj(
+    sampled_action,   # raw diffusion output in unicycle space
+    hist_xyz_rep,     # last history XYZ as integration origin
+    hist_rot_rep,     # last history rotation as integration origin
+)
+# pred_xyz shape: (B * num_samples, 64, 3)
+# pred_rot shape: (B * num_samples, 64, 3, 3)
+```
+
+After reshaping, outputs are returned as:
+- `pred_xyz`: `(B, num_traj_sets, num_traj_samples, 64, 3)`
+- `pred_rot`: `(B, num_traj_sets, num_traj_samples, 64, 3, 3)`
+
+## Trajectory history tokenization
+
+The past 1.6 seconds of ego motion (16 timesteps at 10 Hz) are encoded into 16 discrete tokens using a delta tokenizer. These tokens are embedded in the VLM input between the `<|traj_history_start|>` and `<|traj_history_end|>` markers, giving the model full context of the vehicle's recent motion.
+
+## Coordinate frame
+
+<Note>
+All trajectory coordinates are in the ego vehicle's local frame at the reference timestamp t0. The origin (0, 0, 0) corresponds to the vehicle's position at t0, with the x-axis pointing forward.
+</Note>

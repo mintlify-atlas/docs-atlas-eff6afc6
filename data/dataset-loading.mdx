@@ -1,0 +1,95 @@
+---
+title: "Loading data from the PhysicalAI-AV dataset"
+description: "Use load_physical_aiavdataset to stream ego trajectory and camera data from the NVIDIA PhysicalAI-Autonomous-Vehicles dataset for Alpamayo 1.5 inference."
+---
+
+Alpamayo 1.5 uses the `load_physical_aiavdataset` function to fetch and preprocess inference data from the NVIDIA [PhysicalAI-Autonomous-Vehicles dataset](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles). This function loads synchronized camera frames and ego trajectory data for a given clip and reference timestamp.
+
+<Note>
+You must request and be granted access to the [PhysicalAI-Autonomous-Vehicles dataset](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) on HuggingFace before calling this function. Run `hf auth login` with a valid token first.
+</Note>
+
+## Basic usage
+
+```python
+from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+
+data = load_physical_aiavdataset(
+    clip_id="030c760c-ae38-49aa-9ad8-f5650a545d26",
+    t0_us=5_100_000,
+)
+```
+
+## Parameters
+
+<ParamField path="clip_id" type="str" required>
+  Clip identifier from the PhysicalAI-AV dataset. Clip IDs can be obtained from `vla_golden.parquet` or the dataset interface.
+</ParamField>
+
+<ParamField path="t0_us" type="int" default="5_100_000">
+  Reference timestamp in microseconds. History is sampled before t0, future after. Must be greater than `num_history_steps * time_step * 1_000_000`.
+</ParamField>
+
+<ParamField path="avdi" type="PhysicalAIAVDatasetInterface | None" default="None">
+  Optional pre-initialized dataset interface. If not provided, a new one is created automatically.
+</ParamField>
+
+<ParamField path="maybe_stream" type="bool" default="True">
+  Whether to stream data from HuggingFace if not cached locally.
+</ParamField>
+
+<ParamField path="num_history_steps" type="int" default="16">
+  Number of past trajectory steps to load (default covers 1.6s at 10 Hz).
+</ParamField>
+
+<ParamField path="num_future_steps" type="int" default="64">
+  Number of future trajectory steps to load (default covers 6.4s at 10 Hz).
+</ParamField>
+
+<ParamField path="time_step" type="float" default="0.1">
+  Time step in seconds between trajectory samples. Default is 10 Hz.
+</ParamField>
+
+<ParamField path="camera_features" type="list | None" default="None">
+  List of camera feature identifiers. Defaults to 4 cameras: CAMERA_CROSS_LEFT_120FOV, CAMERA_FRONT_WIDE_120FOV, CAMERA_CROSS_RIGHT_120FOV, CAMERA_FRONT_TELE_30FOV.
+</ParamField>
+
+<ParamField path="num_frames" type="int" default="4">
+  Number of temporal frames to load per camera (covers 0.3s before t0 through t0).
+</ParamField>
+
+## Return value
+
+Returns a dictionary with the following keys:
+
+| Key | Shape | Description |
+|---|---|---|
+| `image_frames` | `(N_cameras, 4, 3, H, W)` | Camera frames as uint8 tensors |
+| `camera_indices` | `(N_cameras,)` | Physical camera index for each camera |
+| `ego_history_xyz` | `(1, 1, 16, 3)` | Past XYZ positions in ego frame at t0 |
+| `ego_history_rot` | `(1, 1, 16, 3, 3)` | Past rotation matrices in ego frame at t0 |
+| `ego_future_xyz` | `(1, 1, 64, 3)` | Ground-truth future XYZ positions |
+| `ego_future_rot` | `(1, 1, 64, 3, 3)` | Ground-truth future rotation matrices |
+| `relative_timestamps` | `(N_cameras, 4)` | Per-frame timestamps relative to earliest frame |
+| `absolute_timestamps` | `(N_cameras, 4)` | Absolute timestamps in microseconds |
+| `t0_us` | — | The reference timestamp used |
+| `clip_id` | — | The clip ID used |
+
+## Custom camera selection
+
+```python
+import physical_ai_av
+from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+
+avdi = physical_ai_av.PhysicalAIAVDatasetInterface()
+
+# Front camera only
+camera_features = [avdi.features.CAMERA.CAMERA_FRONT_WIDE_120FOV]
+
+data = load_physical_aiavdataset(
+    clip_id="030c760c-ae38-49aa-9ad8-f5650a545d26",
+    t0_us=5_100_000,
+    avdi=avdi,
+    camera_features=camera_features,
+)
+```

@@ -1,0 +1,334 @@
+---
+title: "Alpamayo 1.5 Python API reference"
+description: "Complete API reference for Alpamayo1_5 model methods, helper functions, and the dataset loader — with parameter types, defaults, and return shapes."
+---
+
+This page documents the full public Python API for Alpamayo 1.5, covering the model class methods, helper utilities, and dataset loading function.
+
+## Alpamayo1_5 class
+
+The main model class, extending `ReasoningVLA`. Load it via `from_pretrained`:
+
+```python
+from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
+import torch
+
+model = Alpamayo1_5.from_pretrained("nvidia/Alpamayo-1.5-10B", dtype=torch.bfloat16).to("cuda")
+```
+
+### sample_trajectories_from_data_with_vlm_rollout
+
+Primary inference method. Runs VLM autoregressive generation followed by diffusion trajectory sampling.
+
+**Parameters**
+
+<ParamField path="data" type="dict" required>
+  Input dict with keys `tokenized_data` (processor output), `ego_history_xyz` `(B,1,16,3)`, and `ego_history_rot` `(B,1,16,3,3)`.
+</ParamField>
+
+<ParamField path="top_p" type="float" default="0.98">
+  Nucleus sampling threshold for VLM text generation.
+</ParamField>
+
+<ParamField path="top_k" type="int | None" default="None">
+  Top-k sampling limit. When None, only top_p is applied.
+</ParamField>
+
+<ParamField path="temperature" type="float" default="0.6">
+  Sampling temperature for VLM generation. Lower values produce more deterministic reasoning.
+</ParamField>
+
+<ParamField path="num_traj_samples" type="int" default="6">
+  Number of independent trajectory samples to generate per input. Higher values increase diversity and VRAM usage.
+</ParamField>
+
+<ParamField path="num_traj_sets" type="int" default="1">
+  Number of trajectory sets. Total samples = `num_traj_sets * num_traj_samples`.
+</ParamField>
+
+<ParamField path="diffusion_kwargs" type="dict | None" default="None">
+  Additional keyword arguments forwarded to the diffusion sampler.
+</ParamField>
+
+<ParamField path="return_extra" type="bool" default="False">
+  When True, returns a third element `extra` dict with CoC text. Pass as a keyword argument.
+</ParamField>
+
+**Returns**
+
+- `pred_xyz`: `torch.Tensor` shape `(B, num_traj_sets, num_traj_samples, 64, 3)` — predicted XYZ waypoints in ego frame
+- `pred_rot`: `torch.Tensor` shape `(B, num_traj_sets, num_traj_samples, 64, 3, 3)` — predicted rotation matrices
+- `extra` (only when `return_extra=True`): `dict[str, np.ndarray]` with keys `"cot"` and `"meta_action"`, each shape `(B, num_traj_sets, num_traj_samples)`
+
+---
+
+### sample_trajectories_from_data_with_vlm_rollout_cfg_nav
+
+Navigation-conditioned trajectory prediction using classifier-free guidance. Accepts the same parameters as `sample_trajectories_from_data_with_vlm_rollout`. Requires nav text embedded in the prompt via `helper.create_message(nav_text=...)`.
+
+**Additional behavior**: Builds a second unguided KV cache (with navigation tokens removed) and uses both in the diffusion sampling step to amplify the navigation signal.
+
+<Warning>
+This method requires approximately 60 GB VRAM for `num_traj_samples=16`. See [Hardware Requirements](/hardware-requirements).
+</Warning>
+
+---
+
+### generate_text
+
+Text-only generation for visual question answering.
+
+**Parameters**
+
+<ParamField path="data" type="dict" required>
+  Input dict with key `tokenized_data`. Build with `helper.create_vqa_message()` and `processor.apply_chat_template()`.
+</ParamField>
+
+<ParamField path="top_p" type="float" default="0.98">
+  Nucleus sampling threshold.
+</ParamField>
+
+<ParamField path="top_k" type="int | None" default="None">
+  Top-k sampling limit.
+</ParamField>
+
+<ParamField path="temperature" type="float" default="0.6">
+  Sampling temperature.
+</ParamField>
+
+<ParamField path="num_samples" type="int" default="1">
+  Number of independent text responses to generate per input.
+</ParamField>
+
+<ParamField path="max_generation_length" type="int" default="256">
+  Maximum number of new tokens to generate.
+</ParamField>
+
+**Returns**: `dict[str, np.ndarray]` — keys include `"cot"`, `"meta_action"`, and `"answer"`, each shape `(B, num_samples)`.
+
+---
+
+## helper module
+
+### create_message
+
+Builds the chat message for trajectory prediction inference.
+
+<ParamField path="frames" type="torch.Tensor" required>
+  Camera frames, shape `(N_total, C, H, W)`. Typically `data["image_frames"].flatten(0, 1)`.
+</ParamField>
+
+<ParamField path="camera_indices" type="torch.Tensor | None" default="None">
+  Per-camera indices, shape `(N_cameras,)`. Enables named camera labels and positional context.
+</ParamField>
+
+<ParamField path="num_frames_per_camera" type="int" default="4">
+  Number of temporal frames per camera.
+</ParamField>
+
+<ParamField path="nav_text" type="str | None" default="None">
+  Navigation instruction string, e.g. `"Turn left onto Main St in 40m"`. When provided, wrapped in `<|route_start|>...<|route_end|>`.
+</ParamField>
+
+<ParamField path="use_nav_prompt" type="bool" default="False">
+  Use the nav-style prompt format even without nav_text. Useful for fair no-nav baselines in navigation experiments.
+</ParamField>
+
+**Returns**: List of chat message dicts compatible with `processor.apply_chat_template()`.
+
+---
+
+### create_vqa_message
+
+Builds the chat message for VQA inference.
+
+<ParamField path="frames" type="torch.Tensor" required>
+  Camera frames, shape `(N_total, C, H, W)`.
+</ParamField>
+
+<ParamField path="question" type="str" required>
+  The natural language question about the driving scene.
+</ParamField>
+
+<ParamField path="camera_indices" type="torch.Tensor | None" default="None">
+  Per-camera indices for positional context.
+</ParamField>
+
+**Returns**: List of chat message dicts.
+
+---
+
+### get_processor
+
+```python
+from alpamayo1_5 import helper
+processor = helper.get_processor(model.tokenizer)
+```
+
+Returns an `AutoProcessor` configured with `MIN_PIXELS=163840` and `MAX_PIXELS=196608`, with the model's tokenizer attached.
+
+---
+
+### to_device
+
+```python
+model_inputs = helper.to_device(data, device="cuda", dtype=None)
+```
+
+Recursively moves all tensors in a nested dict or list to the target device and optional dtype.
+
+---
+
+## load_physical_aiavdataset
+
+See the [Dataset Loading](/data/dataset-loading) page for full parameter documentation.
+
+```python
+from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+
+data = load_physical_aiavdataset(
+    clip_id="030c760c-ae38-49aa-9ad8-f5650a545d26",
+    t0_us=5_100_000,
+)
+```
+
+---
+
+## nav_utils module
+
+The `nav_utils` module provides helpers for comparing trajectory predictions across different navigation conditions and for manipulating navigation instruction text.
+
+### compare_nav_conditions
+
+Runs trajectory inference under three navigation conditions in a single call: with the navigation instruction, without any instruction, and with the direction-swapped (counterfactual) instruction. Returns a `NavComparisonResult` dataclass.
+
+```python
+from alpamayo1_5 import nav_utils
+from alpamayo1_5.load_physical_aiavdataset import load_physical_aiavdataset
+from alpamayo1_5 import helper
+
+data = load_physical_aiavdataset("030c760c-ae38-49aa-9ad8-f5650a545d26", t0_us=5_100_000)
+
+result = nav_utils.compare_nav_conditions(
+    model=model,
+    processor=processor,
+    data=data,
+    nav_text="Turn left onto De La Cruz Boulevard in 40m",
+    num_traj_samples=16,
+    top_p=0.98,
+    temperature=0.6,
+    return_extra=True,
+)
+
+# result.pred_with_nav    — trajectories conditioned on nav_text
+# result.pred_no_nav      — trajectories without navigation
+# result.pred_counterfactual — trajectories with direction-swapped nav
+# result.nav_text_swapped — the swapped instruction string
+```
+
+<ParamField path="model" type="Alpamayo1_5" required>
+  An Alpamayo1_5 model instance on CUDA.
+</ParamField>
+
+<ParamField path="processor" type="AutoProcessor" required>
+  The chat-template processor from `helper.get_processor(model.tokenizer)`.
+</ParamField>
+
+<ParamField path="data" type="dict" required>
+  Output from `load_physical_aiavdataset`, containing `image_frames`, `ego_history_xyz`, `ego_history_rot`, and `camera_indices`.
+</ParamField>
+
+<ParamField path="nav_text" type="str" required>
+  Navigation instruction string, e.g. `"Turn left onto Main St in 40m"`.
+</ParamField>
+
+<ParamField path="num_traj_samples" type="int" default="16">
+  Number of trajectory samples per condition.
+</ParamField>
+
+<ParamField path="return_extra" type="bool" default="True">
+  Whether to include CoC reasoning traces in the result.
+</ParamField>
+
+**Returns**: `NavComparisonResult` dataclass with fields `pred_with_nav`, `pred_no_nav`, `pred_counterfactual`, `nav_text`, `nav_text_swapped`, and optional `extra_with_nav`, `extra_no_nav`, `extra_counterfactual`.
+
+---
+
+### swap_direction
+
+Swaps left/right direction words in a navigation instruction string. Useful for generating counterfactual instructions.
+
+```python
+from alpamayo1_5 import nav_utils
+
+nav_utils.swap_direction("Turn left onto Main St")   # → "Turn right onto Main St"
+nav_utils.swap_direction("Turn right onto Oak Ave")  # → "Turn left onto Oak Ave"
+nav_utils.swap_direction("Continue straight")         # → "Continue straight"
+```
+
+---
+
+## viz_utils module
+
+The `viz_utils` module provides Bird's Eye View (BEV) trajectory visualization utilities for analyzing navigation-conditioned predictions.
+
+### plot_bev_comparison
+
+Creates a two-panel figure showing camera images (top) and a BEV trajectory distribution comparison (bottom) across the three navigation conditions.
+
+```python
+from alpamayo1_5 import nav_utils, viz_utils
+
+result = nav_utils.compare_nav_conditions(model, processor, data, nav_text="Turn left in 40m")
+camera_grid = viz_utils.make_camera_grid(data["image_frames"], data["camera_indices"])
+
+fig = viz_utils.plot_bev_comparison(
+    pred_with_nav=result.pred_with_nav,
+    pred_no_nav=result.pred_no_nav,
+    pred_counterfactual=result.pred_counterfactual,
+    nav_text=result.nav_text,
+    nav_text_swapped=result.nav_text_swapped,
+    gt_future_xyz=data["ego_future_xyz"],
+    camera_images=camera_grid,
+    title="Navigation conditioning comparison",
+)
+fig.savefig("bev_comparison.png", dpi=150)
+```
+
+<ParamField path="pred_with_nav" type="torch.Tensor" required>
+  Predictions conditioned on nav, shape `[1, 1, K, T, 3]`.
+</ParamField>
+
+<ParamField path="pred_no_nav" type="torch.Tensor" required>
+  Predictions without nav, shape `[1, 1, K, T, 3]`.
+</ParamField>
+
+<ParamField path="pred_counterfactual" type="torch.Tensor" required>
+  Predictions with direction-swapped nav, shape `[1, 1, K, T, 3]`.
+</ParamField>
+
+<ParamField path="gt_future_xyz" type="torch.Tensor | None" default="None">
+  Ground-truth future trajectory for comparison, shape `[1, 1, T, 3]`.
+</ParamField>
+
+<ParamField path="camera_images" type="np.ndarray | None" default="None">
+  Camera grid image for the top panel. Build with `viz_utils.make_camera_grid()`.
+</ParamField>
+
+**Returns**: `matplotlib.figure.Figure`
+
+---
+
+### make_camera_grid
+
+Arranges multi-camera image frames into a 2×3 grid with semantically meaningful layout (front telephoto top-center, front-wide center, cross cameras flanking).
+
+```python
+from alpamayo1_5 import viz_utils
+
+camera_grid = viz_utils.make_camera_grid(
+    image_frames=data["image_frames"],       # [N_cameras, num_frames, C, H, W]
+    camera_indices=data["camera_indices"],   # [N_cameras]
+)
+# Returns: np.ndarray of shape [grid_H, grid_W, 3]
+```

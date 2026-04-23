@@ -1,0 +1,71 @@
+---
+title: "Hardware requirements for Alpamayo 1.5"
+description: "Alpamayo 1.5 requires an NVIDIA GPU with at least 24 GB VRAM. Review VRAM requirements for each inference configuration before setting up."
+---
+
+Alpamayo 1.5 performs GPU-accelerated inference using PyTorch with Flash Attention 2. Memory requirements scale with the number of trajectory samples you request and whether you enable classifier-free guidance (CFG) for navigation conditioning. Review the tables below before provisioning hardware or cloud instances.
+
+## VRAM requirements
+
+| Configuration | VRAM required |
+|---|---|
+| Single-sample inference (`num_traj_samples=1`) | ~24 GB |
+| Multi-sample inference (`num_traj_samples=16`) | ~40 GB |
+| Multi-sample inference with CFG (`num_traj_samples=16`) | ~60 GB |
+
+*Measured on NVIDIA H100 80 GB GPU.*
+
+<Warning>
+  Running on GPUs with less than 24 GB VRAM will likely result in CUDA out-of-memory errors.
+</Warning>
+
+## Tested GPU configurations
+
+The following GPUs have been validated for Alpamayo 1.5 inference:
+
+- **RTX 3090 (24 GB)** — single-sample inference only (`num_traj_samples=1`)
+- **A100 (40 GB or 80 GB)** — single- and multi-sample inference
+- **H100 (80 GB)** — all configurations including CFG
+- **B200** — all configurations including CFG
+
+## Software requirements
+
+| Dependency | Version |
+|---|---|
+| Python | 3.12 (exact version required) |
+| CUDA Toolkit | 12.x with `nvcc` (required for compiling flash-attn from source) |
+| torch | 2.8.0 |
+| flash-attn | 2.8.3+ |
+
+<Note>
+  If you don't have CUDA Toolkit installed or encounter flash-attn build errors, you can use PyTorch's built-in SDPA as a fallback. See [Troubleshooting](/reference/troubleshooting) for instructions.
+</Note>
+
+### Flash Attention SDPA fallback
+
+If flash-attn is unavailable, load the model with `attn_implementation="sdpa"` to use PyTorch's scaled dot-product attention instead:
+
+```python
+from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
+
+model = Alpamayo1_5.from_pretrained(
+    "nvidia/Alpamayo-1.5-10B",
+    dtype=torch.bfloat16,
+    attn_implementation="sdpa",
+).to("cuda")
+```
+
+## Model size and disk space
+
+The model weights are approximately 22 GB and are downloaded automatically from HuggingFace on the first run. Ensure you have at least 25 GB of free disk space before running inference for the first time.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" href="/quickstart" icon="rocket">
+    Install Alpamayo 1.5 and run your first trajectory prediction.
+  </Card>
+  <Card title="Troubleshooting" href="/reference/troubleshooting" icon="triangle-exclamation">
+    Resolve CUDA, flash-attn, and out-of-memory errors.
+  </Card>
+</CardGroup>

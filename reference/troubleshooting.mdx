@@ -1,0 +1,97 @@
+---
+title: "Troubleshooting Alpamayo 1.5 setup issues"
+description: "Fixes for common Alpamayo 1.5 issues: Flash Attention build failures, HuggingFace auth errors, CUDA out-of-memory, and dataset access problems."
+---
+
+This page covers the most common issues encountered when setting up and running Alpamayo 1.5.
+
+## Flash Attention build failure
+
+Flash Attention 2 requires the CUDA Toolkit (specifically `nvcc`) at build time. If you see errors during `uv sync --active`, use one of these options:
+
+<Tabs>
+  <Tab title="Option A: Skip flash-attn, use SDPA">
+    Install without Flash Attention and fall back to PyTorch's built-in scaled dot-product attention:
+
+    ```bash
+    uv sync --active --no-install-package flash-attn
+    ```
+
+    Then load the model with `attn_implementation="sdpa"`:
+
+    ```python
+    from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5
+    import torch
+
+    model = Alpamayo1_5.from_pretrained(
+        "nvidia/Alpamayo-1.5-10B",
+        dtype=torch.bfloat16,
+        attn_implementation="sdpa",
+    ).to("cuda")
+    ```
+  </Tab>
+  <Tab title="Option B: Install CUDA Toolkit">
+    Install CUDA Toolkit 12.x from [NVIDIA's download page](https://developer.nvidia.com/cuda-downloads), ensure `nvcc` is on your PATH, then retry:
+
+    ```bash
+    nvcc --version   # verify nvcc is available
+    uv sync --active
+    ```
+  </Tab>
+</Tabs>
+
+## HuggingFace authentication errors
+
+If you see 401 or 403 errors when downloading the model or dataset:
+
+1. Request access to both gated resources:
+   - [PhysicalAI-Autonomous-Vehicles dataset](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles)
+   - [Alpamayo-1.5-10B model](https://huggingface.co/nvidia/Alpamayo-1.5-10B)
+2. Authenticate with a token that has `read` permission:
+   ```bash
+   hf auth login
+   ```
+3. Verify you are logged in:
+   ```bash
+   hf whoami
+   ```
+
+<Note>
+Dataset access approval may take time. The `physical_ai_av` package streams data from HuggingFace — access must be granted before running inference.
+</Note>
+
+## CUDA out-of-memory errors
+
+If you see `torch.cuda.OutOfMemoryError`:
+
+- Reduce `num_traj_samples` (try `num_traj_samples=1` first)
+- Do not use CFG navigation (`sample_trajectories_from_data_with_vlm_rollout_cfg_nav`) on GPUs with less than 60 GB VRAM
+- Use `attn_implementation="sdpa"` — it may use slightly less memory than Flash Attention in some configurations
+- Close other GPU processes before running inference
+
+| Configuration | Minimum VRAM |
+|---|---|
+| `num_traj_samples=1` | ~24 GB |
+| `num_traj_samples=16` | ~40 GB |
+| `num_traj_samples=16` with CFG nav | ~60 GB |
+
+## Slow model download
+
+The model weights are ~22 GB. Download speed depends on your network connection. On a 100 MB/s wired connection, expect approximately 2.5 minutes. There is no way to skip the download — weights are fetched from HuggingFace on first use.
+
+## minADE above 1.0 m
+
+The test script warns if minADE exceeds 1.0 m. This is normal — model sampling is stochastic. To reduce variance:
+
+- Increase `num_traj_samples` to get more diverse samples
+- Set `torch.cuda.manual_seed_all(42)` for reproducibility
+- Run multiple evaluations and report the average
+
+## Python version mismatch
+
+Alpamayo 1.5 requires **Python 3.12 exactly**. Using Python 3.11 or 3.13 will cause dependency resolution failures with `uv sync`.
+
+```bash
+python --version   # must be 3.12.x
+uv python pin 3.12
+```

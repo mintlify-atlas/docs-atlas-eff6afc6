@@ -1,0 +1,60 @@
+---
+title: "What is Alpamayo 1.5?"
+description: "Alpamayo 1.5 is NVIDIA's 10B-parameter Vision-Language-Action model for autonomous driving, combining reasoning with diffusion-based trajectory prediction."
+---
+
+Alpamayo 1.5 is a 10-billion-parameter Vision-Language-Action (VLA) model developed by NVIDIA's NVlabs for autonomous driving research. It combines a Qwen3-VL visual language backbone with a diffusion-based action expert, enabling the model to simultaneously produce interpretable chain-of-causation (CoC) reasoning traces and trajectory predictions from multi-camera inputs. Alpamayo 1.5 is trained with reinforcement learning (RL) post-training to align its reasoning with trajectory quality, and is released under a non-commercial license for research, experimentation, and evaluation.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Chain-of-Causation reasoning" icon="brain">
+    Produces interpretable natural-language reasoning traces that explain driving decisions before generating trajectories.
+  </Card>
+  <Card title="Trajectory prediction" icon="route">
+    Predicts a 6.4-second horizon at 10 Hz, generating 64 waypoints per trajectory sample.
+  </Card>
+  <Card title="Navigation conditioning" icon="map">
+    Accepts explicit navigation inputs (e.g., turn left, go straight) via classifier-free guidance (CFG) to steer trajectory generation.
+  </Card>
+  <Card title="Visual Question Answering" icon="magnifying-glass">
+    Supports general scene understanding queries, enabling flexible interaction beyond trajectory prediction.
+  </Card>
+  <Card title="Multi-camera support" icon="camera">
+    Handles variable camera configurations from 1 to 7 cameras at inference time without retraining.
+  </Card>
+  <Card title="RL post-training" icon="arrow-up-right-dots">
+    Trained with reinforcement learning to improve alignment between reasoning traces and predicted trajectories.
+  </Card>
+</CardGroup>
+
+## Alpamayo 1 vs. Alpamayo 1.5
+
+| Feature | Alpamayo 1 | Alpamayo 1.5 |
+|---|---|---|
+| Chain-of-Causation (CoC) reasoning | ✅ | ✅ |
+| Vision-Language-Action architecture | ✅ | ✅ |
+| Trajectory prediction (6.4s, 64 waypoints) | ✅ | ✅ |
+| RL post-training | ❌ | ✅ |
+| Navigation conditioning | ❌ | ✅ |
+| Visual Question Answering | ❌ | ✅ |
+| Flexible multi-camera support | ❌ | ✅ |
+
+## License
+
+The Alpamayo 1.5 codebase is released under the Apache 2.0 license. Model weights are available on the [Alpamayo-1.5-10B HuggingFace model card](https://huggingface.co/nvidia/Alpamayo-1.5-10B) under a separate non-commercial license.
+
+<Warning>
+  Alpamayo 1.5 model weights are released under a non-commercial license. This release is for research, experimentation, and evaluation only.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install Alpamayo 1.5 and run your first trajectory prediction inference.
+  </Card>
+  <Card title="Hardware requirements" icon="microchip" href="/hardware-requirements">
+    Review VRAM and software requirements before setting up your environment.
+  </Card>
+</CardGroup>

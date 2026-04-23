@@ -1,0 +1,83 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "Alpamayo 1.5",
+  "projectDescription": "A Vision-Language-Action model from NVIDIA for autonomous driving that combines chain-of-causation reasoning with diffusion-based trajectory prediction.",
+  "theme": "aspen",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "hardware-requirements"
+            ]
+          },
+          {
+            "group": "Inference",
+            "pages": [
+              "inference/overview",
+              "inference/trajectory-prediction",
+              "inference/navigation-guidance",
+              "inference/visual-question-answering",
+              "inference/multi-camera"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/vlm-backbone",
+              "architecture/diffusion-expert",
+              "architecture/action-space"
+            ]
+          },
+          {
+            "group": "Data & Configuration",
+            "pages": [
+              "data/dataset-loading",
+              "data/configuration",
+              "data/input-format"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/api",
+              "reference/troubleshooting",
+              "reference/faq",
+              "reference/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Chain-of-Causation (CoC) reasoning for interpretable autonomous driving decisions",
+    "Diffusion-based trajectory prediction over a 6.4s horizon at 10Hz (64 waypoints)",
+    "Classifier-free guidance (CFG) with navigation conditioning for steerable trajectories",
+    "Flexible multi-camera support (up to 7 cameras) with variable camera counts at inference",
+    "Visual Question Answering (VQA) for scene understanding",
+    "Reinforcement Learning post-training for reasoning-trajectory alignment",
+    "Built on Qwen3-VL backbone with a 10B parameter scale"
+  ],
+  "publicApiSurface": [
+    "Alpamayo1_5.from_pretrained(model_id, dtype, attn_implementation)",
+    "Alpamayo1_5.sample_trajectories_from_data_with_vlm_rollout(data, top_p, temperature, num_traj_samples)",
+    "Alpamayo1_5.sample_trajectories_from_data_with_vlm_rollout_cfg_nav(data, top_p, temperature, num_traj_samples)",
+    "Alpamayo1_5.generate_text(data, top_p, temperature, num_samples, max_generation_length)",
+    "load_physical_aiavdataset(clip_id, t0_us, num_history_steps, num_future_steps, camera_features)",
+    "helper.create_message(frames, camera_indices, nav_text, use_nav_prompt)",
+    "helper.create_vqa_message(frames, question, camera_indices)",
+    "helper.get_processor(tokenizer)",
+    "helper.to_device(data, device, dtype)",
+    "Alpamayo1_5Config(diffusion_cfg, action_space_cfg, expert_cfg, include_camera_ids)"
+  ]
+}

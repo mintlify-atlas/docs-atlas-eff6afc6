@@ -1,0 +1,45 @@
+---
+title: "Alpamayo 1.5 architecture overview"
+description: "Alpamayo 1.5 is a 10B Vision-Language-Action model combining a Qwen3-VL backbone with a diffusion expert for interpretable trajectory generation."
+---
+
+Alpamayo 1.5 is a Vision-Language-Action (VLA) model that integrates a large vision-language model backbone with a specialized diffusion action expert. This architecture enables the model to produce human-readable chain-of-causation reasoning and precise vehicle trajectory predictions in a single forward pass.
+
+The model consists of three main components:
+
+<CardGroup cols={3}>
+  <Card title="VLM Backbone" icon="eye" href="/architecture/vlm-backbone">
+    Qwen3-VL processes multi-camera images, ego history tokens, and optional navigation text to produce reasoning
+  </Card>
+  <Card title="Diffusion Expert" icon="wand-magic-sparkles" href="/architecture/diffusion-expert">
+    Flow matching denoiser conditioned on VLM hidden states produces trajectory predictions
+  </Card>
+  <Card title="Action Space" icon="car" href="/architecture/action-space">
+    Unicycle acceleration-curvature model decodes raw diffusion output to XYZ waypoints
+  </Card>
+</CardGroup>
+
+## Two-stage inference pipeline
+
+Inference runs in two sequential stages within a single method call:
+
+<Steps>
+  <Step title="VLM autoregressive generation">
+    The Qwen3-VL backbone processes camera images and ego history, then generates chain-of-causation (CoC) reasoning text autoregressively. Generation stops when the `<|traj_future_start|>` token is produced. The VLM's KV cache is retained for the next stage.
+  </Step>
+  <Step title="Diffusion trajectory sampling">
+    The diffusion expert uses the frozen VLM KV cache as conditioning context. Starting from random Gaussian noise, it iteratively denoises a trajectory action using flow matching. The final action is decoded from the unicycle action space into XYZ waypoints and rotation matrices.
+  </Step>
+</Steps>
+
+## Special tokens
+
+Alpamayo 1.5 uses a set of special tokens to structure its inputs and outputs:
+
+| Token | Purpose |
+|---|---|
+| `<\|traj_history_start\|>` / `<\|traj_history_end\|>` | Wraps the tokenized ego trajectory history |
+| `<\|cot_start\|>` | Marks the start of chain-of-causation reasoning |
+| `<\|traj_future_start\|>` | Signals end of VLM generation; diffusion begins here |
+| `<\|route_start\|>` / `<\|route_end\|>` | Wraps optional navigation instruction text |
+| `<\|question_start\|>` / `<\|answer_start\|>` | Used for VQA prompts |
